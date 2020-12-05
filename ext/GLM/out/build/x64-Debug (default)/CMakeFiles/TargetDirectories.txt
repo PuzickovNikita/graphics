@@ -1,0 +1,2 @@
+D:/Distant_5sem/Graphics/graphics/ext/GLM/out/build/x64-Debug (default)/CMakeFiles/edit_cache.dir
+D:/Distant_5sem/Graphics/graphics/ext/GLM/out/build/x64-Debug (default)/CMakeFiles/rebuild_cache.dir
