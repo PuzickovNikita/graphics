@@ -7,68 +7,60 @@
 
 #define M_PI 3.141592653589793 
 
-//СВЕТ
 struct Light {
 	glm::vec3 position;
 	float intensity;
 	Light(const glm::vec3& set_position, const float& set_intensity) : position(set_position), intensity(set_intensity) {}
 };
 
-
-
-//ОБЪЕКТЫ
-
 struct Material {
 	glm::vec3 color;
 
-	Material(const glm::vec3& set_color) : color(set_color) {}
+	Material(const glm::vec3& set_color) : color(set_color) {
+		color = set_color;
+	}
 };
 
 class Object {
 public:
 	Material material;
+	int obj_type; //1-сфера
+				  //2-плоскость
 
-	virtual bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction, float& t) const {
+	virtual bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction,
+		float& t) const {
 		std::cout << "Отработала вирутальная функция INTERSECT Object\n" << std::endl;
 		return false;
 	}
 
-	virtual void get_color (glm::vec3& res, const glm::vec3& hit) const {
+	virtual void get_color(glm::vec3& res, const glm::vec3& hit) const {
 
 		std::cout << "Отработала вирутальная функция GET_COLOR Object\n" << std::endl;
 	}
 
-	Object(const glm::vec3& set_color):material(set_color){
+	virtual void set_N(glm::vec3& N_res, glm::vec3& hit) const {}
+
+	Object(const glm::vec3& set_color, int object_type) :material(set_color), obj_type(object_type) {
 	}
 };
 
 std::vector< Light* > lights;
 std::vector <Object*> scene;
 
-float get_light(const glm::vec3& N, const glm::vec3& hit, int obj_type = 1) {//1 - сфера
-	float DLI = 0; // Diffuse Light Intensity								 //2 - плоскость
-	for (size_t i = 0; i < lights.size(); i++) {
-		glm::vec3 light_dir = glm::normalize((*lights[i]).position - hit);
-		if(obj_type == 1)
-			DLI += (*lights[i]).intensity * std::max(0.f, dot(light_dir, N));
-		else
-			DLI += (*lights[i]).intensity * std::max(0.f, abs(dot(light_dir, N)));
-	}
-	return DLI;
-}
+
 
 class Sphere : public Object {
 public:
-
 	glm::vec3 center;
 	float r;
 
-	Sphere(const glm::vec3& set_center, const glm::vec3& set_color, const float& radius) :Object( set_color) {
+	Sphere(const glm::vec3& set_center, const glm::vec3& set_color, const float& radius) :Object(set_color, 1) {
 		r = radius;
 		center = set_center;
 	}
 
-	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction, float& t) const override {
+	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction,
+		float& t) const override {
 
 		float t_RES; // значение t точки пересечения со сферой
 
@@ -88,16 +80,15 @@ public:
 			t_RES = t_CTC + sqrtf(r2 - d2);
 		else
 			t_RES = t_CTC - sqrtf(r2 - d2);
-
+		if (t_RES <= 0)
+			return false;
+		//TODO:ПРОЧЕКАТЬ АЛГОРИТМ ЧТОБЫ ПОНЯТЬ КОСТЫЛЬ ВЕРХНИЕ ДВЕ СТРОЧКИ ИЛИ НЕТ 
 		t = t_RES;
 		return true;
 	}
 
-	
-
-	void get_color (glm::vec3& res, const glm::vec3& hit) const override {
-		glm::vec3 N = glm::normalize(hit - center);
-		res = material.color * get_light(N, hit);
+	void set_N(glm::vec3& N_res, glm::vec3& hit) const override {
+		N_res = glm::normalize(hit - center);
 	}
 };
 
@@ -105,21 +96,22 @@ class Plane : public Object {
 public:
 	float r;
 	glm::vec3 N;
-	
+
 	Plane(const glm::vec3& x1, const glm::vec3& x2,
-		const glm::vec3& x3, const glm::vec3 &set_color) : Object(set_color) {
-		N = glm::normalize(glm::cross(glm::vec3(x2 - x1),glm::vec3(x3 - x1)));
+		const glm::vec3& x3, const glm::vec3& set_color) : Object(set_color, 2) {
+		N = glm::normalize(glm::cross(glm::vec3(x2 - x1), glm::vec3(x3 - x1)));
 		r = N.x * x1.x + N.y * x1.y + N.z * x1.z;
 		//std::cout << r << std::endl << N.x << ' ' << N.y << ' ' << N.z << std::endl;
 	}
 
-	Plane(const glm::vec3& set_N, const float& set_r, const glm::vec3 set_color) : Object(set_color) {
+	Plane(const glm::vec3& set_N, const float& set_r, const glm::vec3 set_color) : Object(set_color, 2) {
 		r = set_r;
 		N = glm::normalize(set_N);
 		//std::cout << r << std::endl << N.x << ' ' << N.y << ' ' << N.z << std::endl;
 	}
 
-	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction, float& t) const override {
+	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction,
+		float& t) const override {
 		float dn = glm::dot(v_direction, N);
 		if (dn == 0) return false;
 		float on = glm::dot(v_origin, N);
@@ -128,78 +120,124 @@ public:
 		return true;
 	}
 
-	void get_color(glm::vec3& res,const glm::vec3& hit) const override {
-		res = material.color *get_light(N, hit, 2);
+	void set_N(glm::vec3& N_res, glm::vec3& hit) const override {
+		N_res = N;
 	}
-
 };
 
-//СЦЕНА
-const int width = 1600, height = 900;
-int fov_degree = 60;
 
-size_t do_trace(const glm::vec3& v_origin, const glm::vec3& v_dir, float &t_solv) {
+void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
+	glm::vec3& color_res) {
 	int nearest = -1;
-	t_solv = FLT_MAX; // луч задается как point = v_origin + t * v_dir
-							// t_solv -- t, при котором происходит пересечение
+	float t_solv = FLT_MAX;
+	color_res.x = 0; color_res.y = 0; color_res.z = 0;
+
 	for (size_t i = 0; i < scene.size(); i++) {
-		float t_tmp; \
-			if ((*scene[i]).intersect(v_origin, v_dir, t_tmp))
-				if (t_tmp < t_solv) {
-					t_solv = t_tmp;
-					nearest = i;
-				}
+		float t_tmp; glm::vec3 N_tmp;
+		if ((*scene[i]).intersect(v_orig, v_dir, t_tmp))
+			if (t_tmp < t_solv) {
+				t_solv = t_tmp;
+				nearest = i;
+			}
 	}
 
 	if (nearest < 0)
-		return -1;
-	return nearest;
+		return;
+
+	glm::vec3 hit = v_orig + v_dir * t_solv;
+	glm::vec3 N; scene[nearest]->set_N(N, hit);
+	//ОСВЕЩЕНИЕ
+
+	float DLI = 0; // Diffuse Light Intensity
+	for (size_t i = 0; i < lights.size(); i++) {
+		glm::vec3 light_dir = (lights[i]->position - hit);
+		float light_distance = glm::length(light_dir);
+		light_dir = glm::normalize(light_dir);
+
+
+		//Тень
+		bool light_saw = true;
+		glm::vec3 shadow_orig = glm::dot(light_dir, N) < 0
+			? hit - N * (float)(1e-3)
+			: hit + N * (float)(1e-3);
+		for (size_t j = 0; j < scene.size(); j++) {
+			float t;
+			if (scene[j]->intersect(shadow_orig, light_dir, t))
+				if (t <= light_distance){
+					light_saw = false;
+					break;
+				}
+		}
+
+		//если не в тени добавляем освещение
+		if (light_saw) {
+			if (scene[nearest]->obj_type == 1)
+				DLI += (*lights[i]).intensity *
+				std::max(0.f, glm::dot(light_dir, N));
+			else //в плоскости возможно надо повернуть нормаль
+				DLI += (*lights[i]).intensity *
+				std::max(0.f, glm::abs(glm::dot(light_dir, N)));
+		}
+	}
+	color_res = scene[nearest]->material.color*DLI;
 }
 
-void do_light(const glm::vec3 &v_origin, const glm::vec3 &v_dir, const float &t_solv,
-	Object* obj,
-	glm::vec3 &color_res){
-
-	glm::vec3 hit = v_origin + t_solv * v_dir; // координаты точки пересечения
-
-	(*obj).get_color(color_res, hit);
-}
 
 int main() {
+
+	const int width = 960, height = 540;
+	const int fov_degree = 60;
+	
+	int right = 100;
+	int left = -100;
+	int top = 100;
+	int bot = -20;
+	int front = -200;
+	int back = 40;
 	//задаем сцену
 		//ОБЪЕКТЫ
-	Sphere s1 = Sphere(glm::vec3(0	, 50, -200), glm::vec3(1, 0.078, 0.57), 30);
+	glm::vec3 v1(10, 15, 23);
+	Sphere s1 = Sphere(glm::vec3(-20, 20, -100), glm::vec3(1, 0.078, 0.57), 10);
+	Sphere s2 = Sphere(glm::vec3(0, 40, -90), glm::vec3(1, 1, 1), 5);
 	//Sphere s2 = Sphere(glm::vec3(-150, -50, -400), glm::vec3(1, 0.85, 0), 60);
+	scene.push_back(&s1);
+	scene.push_back(&s2);
+
 	//пол
-	Plane p1 = Plane(glm::vec3(0, -100, 0), glm::vec3(100, -100, 0), glm::vec3(0, -100, 100),
-		glm::vec3((float)135 / 255, (float)206 / 255, (float)250 / 255));
+	Plane p1 = Plane(glm::vec3(0, bot, 0), glm::vec3(100, bot, 0), glm::vec3(0, bot, 100),
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
 	//потолок
-	Plane p2 = Plane(glm::vec3(0, 200, 0), glm::vec3(100, 200, 0), glm::vec3(0, 200, 100),
-		glm::vec3((float)135 / 255, (float)206 / 255, (float)250 / 255));
+	Plane p2 = Plane(glm::vec3(0, top, 0), glm::vec3(100, top, 0), glm::vec3(0, top, 100),
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
 	//задняя стена
-	Plane p3 = Plane(glm::vec3(0, -100, -700), glm::vec3(100, 0, -700), glm::vec3(0, 0, -700),
-		glm::vec3((float)189 / 255, (float)183 / 255, (float)107 / 255));
+	Plane p3 = Plane(glm::vec3(0, -100, back), glm::vec3(100, 0, back), glm::vec3(0, 0, back),
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
 	//передняя стена
-	Plane p4 = Plane(glm::vec3(0, -10, 10),  glm::vec3(0, 0, 10),  glm::vec3(10, 0, 10), 
-		glm::vec3(0, 1, 0));
+	Plane p4 = Plane(glm::vec3(0, -100, front), glm::vec3(0, 0, front), glm::vec3(100, 0, front),
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
 	//правая стена
-	Plane p5 = Plane(glm::vec3(350, 0, 0), glm::vec3(350, 0, 100), glm::vec3(350, 100, 0), 
-		glm::vec3((float)238/255, (float)232/255, (float)170/255));
+	Plane p5 = Plane(glm::vec3(right, 0, 0), glm::vec3(right, 0, 100), glm::vec3(right, 100, 0),
+		glm::vec3((float)255 / 255, (float)100 / 255, (float)100 / 255));
 	//левая стена
-	Plane p6 = Plane(glm::vec3(-450, 0, 0), glm::vec3(-450, 0, 100), glm::vec3(-450, 100, 0),
-		glm::vec3((float)238 / 255, (float)232 / 255, (float)170 / 255));
+	Plane p6 = Plane(glm::vec3(left, 0, 0), glm::vec3(left, 0, 100), glm::vec3(left, 100, 0),
+		glm::vec3((float)100 / 255, (float)100 / 255, (float)225 / 255));
 	scene.push_back(&p1);
 	scene.push_back(&p2);
 	scene.push_back(&p3);
 	scene.push_back(&p4);
 	scene.push_back(&p5);
 	scene.push_back(&p6);
-	
-	scene.push_back(&s1);
-	//scene.push_back(&s2
+
 	//СВЕТ
-	Light l1 = Light(glm::vec3(100, 150, -50), 1.0);
+	Light l1 = Light(glm::vec3(0, 95, -120), 0.25);
+	Light l2 = Light(glm::vec3(-20, 95, -80), 0.25);
+	Light l3 = Light(glm::vec3(20, 95, -80), 0.25);
+	Light l4 = Light(glm::vec3(0, 95, 0), 0.25);
 	lights.push_back(&l1);
+	lights.push_back(&l2);
+	lights.push_back(&l3);
+	lights.push_back(&l4);
+	//TODO: нормировать интенсивность источников света, чтобы суммарно была 1
 	//____________________________
 
 	float fov = (float)(M_PI * fov_degree) / 180;
@@ -215,13 +253,7 @@ int main() {
 			float yy = -(2 * (y + 0.5) * invH - 1) * tan(fov / 2.);
 			glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
 			*pixel = glm::vec3(0);
-
-			float t_solv;
-			size_t i = do_trace(glm::vec3(0), direction, t_solv);
-			do_light(glm::vec3(0), direction, t_solv, scene[i], *pixel);
-
-
-
+			trace_ray(glm::vec3(0), direction, *pixel);
 		}
 
 	//вывод кадра
@@ -237,4 +269,5 @@ int main() {
 	//	delete scene[i];
 	delete[] frame;
 
+	return 0;
 }
