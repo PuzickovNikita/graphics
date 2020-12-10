@@ -1,1 +1,1 @@
-Открыть проект: graphics/graphics.sln
+Открыть проект: RayTracing/RayTracing.sln
