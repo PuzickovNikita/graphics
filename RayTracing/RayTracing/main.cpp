@@ -188,21 +188,27 @@ int main() {
 	const int width = 960, height = 540;
 	const int fov_degree = 60;
 	
-	int right = 100;
-	int left = -100;
-	int top = 100;
-	int bot = -20;
-	int front = -200;
-	int back = 40;
+
 	//задаем сцену
 		//ОБЪЕКТЫ
-	glm::vec3 v1(10, 15, 23);
-	Sphere s1 = Sphere(glm::vec3(-20, 20, -100), glm::vec3(1, 0.078, 0.57), 10);
-	Sphere s2 = Sphere(glm::vec3(0, 40, -90), glm::vec3(1, 1, 1), 5);
-	//Sphere s2 = Sphere(glm::vec3(-150, -50, -400), glm::vec3(1, 0.85, 0), 60);
-	scene.push_back(&s1);
-	scene.push_back(&s2);
 
+	Sphere s3(glm::vec3(-3, 0, -16), glm::vec3(1, 0.85, 0), 2);
+	scene.push_back(&s3);
+	Sphere s4(glm::vec3(-1, -1.5, -12), glm::vec3(1, 0.078, 0.57), 2);
+	scene.push_back(&s4);
+	Sphere s5(glm::vec3(1.5, -0.5, -18), glm::vec3(1, 0.078, 0.57), 3);
+	scene.push_back(&s5);
+	Sphere s6(glm::vec3(7, 5, -18), glm::vec3(1, 0.85, 0), 4);
+	scene.push_back(&s6);
+
+	int right = 40;
+	int left = -40;
+	int top = 60;
+	int bot = -5;
+	int front = -30;
+	int back = 40;
+	//TODO заменить плоскости прямоугольниками, убрать потолок и/или заднюю стенку
+	//TODO и настроить получше сцену, но сначала посмотреть на сцену в динамике
 	//пол
 	Plane p1 = Plane(glm::vec3(0, bot, 0), glm::vec3(100, bot, 0), glm::vec3(0, bot, 100),
 		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
@@ -229,14 +235,13 @@ int main() {
 	scene.push_back(&p6);
 
 	//СВЕТ
-	Light l1 = Light(glm::vec3(0, 95, -120), 0.25);
-	Light l2 = Light(glm::vec3(-20, 95, -80), 0.25);
-	Light l3 = Light(glm::vec3(20, 95, -80), 0.25);
-	Light l4 = Light(glm::vec3(0, 95, 0), 0.25);
+
+	Light l1 = Light(glm::vec3(-20, 20, 20), 0.33);
 	lights.push_back(&l1);
+	Light l2 = Light(glm::vec3( 30, 50, -25), 0.33);
 	lights.push_back(&l2);
+	Light l3 = Light(glm::vec3(30, 20, 30), 0.33);
 	lights.push_back(&l3);
-	lights.push_back(&l4);
 	//TODO: нормировать интенсивность источников света, чтобы суммарно была 1
 	//____________________________
 
