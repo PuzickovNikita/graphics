@@ -15,9 +15,16 @@ struct Light {
 
 struct Material {
 	glm::vec3 color;
+	float difusal_factor;
+	float specular_factor;
+	float specular_exponent;
+	float reflection_factor;
 
-	Material(const glm::vec3& set_color) : color(set_color) {
-		color = set_color;
+
+	Material(const glm::vec3& set_color, const float &set_difusal_factor, const float &set_specular_factor,
+	const float &set_specular_exponent, const float &set_reflection_factor) : 
+			color(set_color), difusal_factor(set_difusal_factor), specular_factor(set_specular_factor),
+			specular_exponent(set_specular_exponent), reflection_factor(set_reflection_factor){
 	}
 };
 
@@ -40,7 +47,10 @@ public:
 
 	virtual void set_N(glm::vec3& N_res, glm::vec3& hit) const {}
 
-	Object(const glm::vec3& set_color, int object_type) :material(set_color), obj_type(object_type) {
+	Object(const glm::vec3& set_color,const float &set_difusal_factor, const float &set_specular_factor,
+		const float& set_specular_exponent, const float &set_reflection_factor, const int &object_type)
+		:material(set_color, set_difusal_factor, set_specular_factor, set_specular_exponent, set_reflection_factor),
+		obj_type(object_type) {
 	}
 };
 
@@ -54,7 +64,11 @@ public:
 	glm::vec3 center;
 	float r;
 
-	Sphere(const glm::vec3& set_center, const glm::vec3& set_color, const float& radius) :Object(set_color, 1) {
+	Sphere(const glm::vec3& set_center, const float& radius, 
+		const glm::vec3& set_color, const float &set_difusal_factor, const float& set_specular_factor,
+		const float& set_specular_exponent, const float &set_reflection_factor)
+		:Object(set_color, set_difusal_factor, set_specular_factor, 
+			set_specular_exponent, set_reflection_factor,  1) {
 		r = radius;
 		center = set_center;
 	}
@@ -97,16 +111,13 @@ public:
 	float r;
 	glm::vec3 N;
 
-	Plane(const glm::vec3& x1, const glm::vec3& x2,
-		const glm::vec3& x3, const glm::vec3& set_color) : Object(set_color, 2) {
+	Plane(const glm::vec3& x1, const glm::vec3& x2, const glm::vec3& x3, 
+		const glm::vec3& set_color, const float &set_difusal_factor, const float &set_specular_factor, 
+		const float& set_specular_exponent, const float& set_reflection_factor)
+		: Object(set_color, set_difusal_factor, set_specular_factor, set_specular_exponent,
+			set_reflection_factor, 2) {
 		N = glm::normalize(glm::cross(glm::vec3(x2 - x1), glm::vec3(x3 - x1)));
 		r = N.x * x1.x + N.y * x1.y + N.z * x1.z;
-		//std::cout << r << std::endl << N.x << ' ' << N.y << ' ' << N.z << std::endl;
-	}
-
-	Plane(const glm::vec3& set_N, const float& set_r, const glm::vec3 set_color) : Object(set_color, 2) {
-		r = set_r;
-		N = glm::normalize(set_N);
 		//std::cout << r << std::endl << N.x << ' ' << N.y << ' ' << N.z << std::endl;
 	}
 
@@ -127,7 +138,7 @@ public:
 
 
 void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
-	glm::vec3& color_res) {
+	glm::vec3& color_res, const int &ray_reflect_lef) {
 	int nearest = -1;
 	float t_solv = FLT_MAX;
 	color_res.x = 0; color_res.y = 0; color_res.z = 0;
@@ -146,9 +157,23 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 
 	glm::vec3 hit = v_orig + v_dir * t_solv;
 	glm::vec3 N; scene[nearest]->set_N(N, hit);
+	float difusal_factor = scene[nearest]->material.difusal_factor;
+	float specular_factor = scene[nearest]->material.specular_factor;
+	float specular_exponent = scene[nearest]->material.specular_exponent;
+
+
+	glm::vec3 reflect_color(0);
+	if (ray_reflect_lef > 0) {
+		glm::vec3 reflect_dir = v_dir - 2.f * glm::dot(v_dir, N) * N;
+		glm::vec3 reflect_orig = glm::dot(reflect_dir, N) < 0
+								? hit - N * (float)(1e-3)
+								: hit + N * (float)(1e-3);
+		trace_ray(reflect_orig, reflect_dir, reflect_color, ray_reflect_lef - 1);
+	}
 	//ОСВЕЩЕНИЕ
 
 	float DLI = 0; // Diffuse Light Intensity
+	float SLI = 0; //Specular Light Intensity
 	for (size_t i = 0; i < lights.size(); i++) {
 		glm::vec3 light_dir = (lights[i]->position - hit);
 		float light_distance = glm::length(light_dir);
@@ -170,35 +195,61 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 		}
 
 		//если не в тени добавляем освещение
-		if (light_saw) {
-			if (scene[nearest]->obj_type == 1)
-				DLI += (*lights[i]).intensity *
-				std::max(0.f, glm::dot(light_dir, N));
-			else //в плоскости возможно надо повернуть нормаль
-				DLI += (*lights[i]).intensity *
-				std::max(0.f, glm::abs(glm::dot(light_dir, N)));
+		if (light_saw) {//Блинн-Фонг
+			if (scene[nearest]->obj_type == 1) {
+				if(difusal_factor != 0)
+					DLI +=	(*lights[i]).intensity *
+							std::max(0.f, glm::dot(light_dir, N));
+				if( (specular_factor != 0) && (specular_exponent != 0) )
+				{
+					glm::vec3 H = (glm::normalize(-v_dir + light_dir));//Не очень понял почему знаки так, но работает же)
+					SLI +=	(lights[i]->intensity) *
+							pow(std::max(0.f, glm::dot(H, N)), specular_exponent);
+				}
+			}
+			else { //в плоскости возможно надо повернуть нормаль
+				if (difusal_factor != 0)
+					DLI +=	(*lights[i]).intensity *
+							std::max(0.f, glm::abs(glm::dot(light_dir, N)));
+				if ((specular_factor != 0) && (specular_exponent != 0))
+				{
+					glm::vec3 H = (glm::normalize(-v_dir + light_dir));//Не очень понял почему знаки так, но работает же)
+					SLI +=	(lights[i]->intensity) *
+							pow(std::max(0.f, glm::abs(glm::dot(H, N))), specular_exponent);
+				}
+			}
 		}
 	}
-	color_res = scene[nearest]->material.color*DLI;
+	color_res = scene[nearest]->material.color * DLI * difusal_factor +
+		glm::vec3(1) * SLI * specular_factor
+		+ reflect_color * scene[nearest]->material.reflection_factor;
+
+	//color_res = glm::vec3(1) * SLI * specular_factor;
 }
 
 
 int main() {
 
-	const int width = 960, height = 540;
+	//const int width = 960, height = 540;
+	const int width = 1920, height = 1080;
 	const int fov_degree = 60;
 	
 
 	//задаем сцену
 		//ОБЪЕКТЫ
+#define material1 glm::vec3(1, 0.85, 0), 0.6, 0.4 , 55.0
+#define material2 glm::vec3(1, 0.078, 0.57), 0.9, 0.7, 70.0
+	// Сфера( вектор-центр, радиус, вектор-RGB, диффузный множитель, зеркальный множитель, зеркальная экспонента)
+	// зеркальный множитель - яркость бликов
+	// зеркальная экспонента - обратный радиус блика
 
-	Sphere s3(glm::vec3(-3, 0, -16), glm::vec3(1, 0.85, 0), 2);
+	Sphere s3(glm::vec3(-3, 0, -16), 2 , material1, 0);
 	scene.push_back(&s3);
-	Sphere s4(glm::vec3(-1, -1.5, -12), glm::vec3(1, 0.078, 0.57), 2);
+	Sphere s4(glm::vec3(-1, -1.5, -12), 2,  material2, 0.7);
 	scene.push_back(&s4);
-	Sphere s5(glm::vec3(1.5, -0.5, -18), glm::vec3(1, 0.078, 0.57), 3);
+	Sphere s5(glm::vec3(1.5, -0.5, -18),3, material2, 0);
 	scene.push_back(&s5);
-	Sphere s6(glm::vec3(7, 5, -18), glm::vec3(1, 0.85, 0), 4);
+	Sphere s6(glm::vec3(7, 5, -18), 4, material1, 0.8);
 	scene.push_back(&s6);
 
 	int right = 40;
@@ -209,24 +260,26 @@ int main() {
 	int back = 40;
 	//TODO заменить плоскости прямоугольниками, убрать потолок и/или заднюю стенку
 	//TODO и настроить получше сцену, но сначала посмотреть на сцену в динамике
+	// Плоскость по трем точкам( Х1, Х2, Х2
+	//	вектор-RGB, дифузный множитель, зеркальный множитель, зеркальная степень)
 	//пол
 	Plane p1 = Plane(glm::vec3(0, bot, 0), glm::vec3(100, bot, 0), glm::vec3(0, bot, 100),
-		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255), 1.0, 0, 1.0, 0);
 	//потолок
 	Plane p2 = Plane(glm::vec3(0, top, 0), glm::vec3(100, top, 0), glm::vec3(0, top, 100),
-		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255), 1.0, 0, 1.0, 0);
 	//задняя стена
 	Plane p3 = Plane(glm::vec3(0, -100, back), glm::vec3(100, 0, back), glm::vec3(0, 0, back),
-		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255), 1.0, 0, 1.0, 0);
 	//передняя стена
 	Plane p4 = Plane(glm::vec3(0, -100, front), glm::vec3(0, 0, front), glm::vec3(100, 0, front),
-		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255));
+		glm::vec3((float)255 / 255, (float)239 / 255, (float)213 / 255), 1.0, 0, 1.0, 0);
 	//правая стена
 	Plane p5 = Plane(glm::vec3(right, 0, 0), glm::vec3(right, 0, 100), glm::vec3(right, 100, 0),
-		glm::vec3((float)255 / 255, (float)100 / 255, (float)100 / 255));
+		glm::vec3((float)255 / 255, (float)100 / 255, (float)100 / 255), 1.0, 0, 1.0, 0);
 	//левая стена
 	Plane p6 = Plane(glm::vec3(left, 0, 0), glm::vec3(left, 0, 100), glm::vec3(left, 100, 0),
-		glm::vec3((float)100 / 255, (float)100 / 255, (float)225 / 255));
+		glm::vec3((float)100 / 255, (float)100 / 255, (float)225 / 255), 1.0, 0, 1.0, 0);
 	scene.push_back(&p1);
 	scene.push_back(&p2);
 	scene.push_back(&p3);
@@ -236,13 +289,17 @@ int main() {
 
 	//СВЕТ
 
-	Light l1 = Light(glm::vec3(-20, 20, 20), 0.33);
+	Light l1 = Light(glm::vec3(-20, 20, 20), 0.25);
 	lights.push_back(&l1);
-	Light l2 = Light(glm::vec3( 30, 50, -25), 0.33);
+	Light l2 = Light(glm::vec3( 30, 50, -25), 0.5);
 	lights.push_back(&l2);
-	Light l3 = Light(glm::vec3(30, 20, 30), 0.33);
+	Light l3 = Light(glm::vec3(30, 20, 30), 0.25);
 	lights.push_back(&l3);
-	//TODO: нормировать интенсивность источников света, чтобы суммарно была 1
+	float max = 0;
+	for (size_t i = 0; i < lights.size(); i++)
+		max += lights[i]->intensity;
+	for (size_t i = 0; i < lights.size(); i++)
+		lights[i]->intensity *= (float)1 / max;
 	//____________________________
 
 	float fov = (float)(M_PI * fov_degree) / 180;
@@ -252,13 +309,15 @@ int main() {
 	glm::vec3* frame = new glm::vec3[width * height];
 	glm::vec3* pixel = frame;
 
+	int ray_reflect_max = 2;
+
 	for (int y = 0; y < height; y++)
 		for (int x = 0; x < width; x++, pixel++) {
 			float xx = (2 * (x + 0.5) * invW - 1) * tan(fov / 2.) * aspect_ratio;
 			float yy = -(2 * (y + 0.5) * invH - 1) * tan(fov / 2.);
 			glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
 			*pixel = glm::vec3(0);
-			trace_ray(glm::vec3(0), direction, *pixel);
+			trace_ray(glm::vec3(0), direction, *pixel, ray_reflect_max);
 		}
 
 	//вывод кадра
