@@ -9,7 +9,9 @@
 #define M_PI 3.141592653589793 
 
 //settings
-int shadow_blur_max = 8;
+int shadow_blur_max;
+int ray_reflect_max;
+int anti_alias_max;
 //______
 
 struct Light {
@@ -332,6 +334,13 @@ int main() {
 	const int width = 640, height = 360;
 	//const int width = 960, height = 540;
 	//const int width = 1600, height = 900;
+	//const int width = 1920, height = 1080;
+
+	ray_reflect_max = 1;
+	shadow_blur_max = 1;
+	anti_alias_max = 4;
+
+
 	const int fov_degree = 60;
 
 	//задаем сцену
@@ -388,12 +397,14 @@ int main() {
 
 	//СВЕТ
 
-	Light l1 = Light(glm::vec3(-20, 20, 20), 3, 0.25);
-	lights.push_back(&l1);
-	Light l2 = Light(glm::vec3(30, 50, -25), 3, 0.5);
-	lights.push_back(&l2);
-	Light l3 = Light(glm::vec3(30, 20, 30), 3, 0.25);
+	Light l1 = Light(glm::vec3(-20, 20, 20), 3, 1);
+	//lights.push_back(&l1);
+	Light l2 = Light(glm::vec3(30, 50, -25), 3, 3);
+	//lights.push_back(&l2);
+	Light l3 = Light(glm::vec3(30, 20, 30), 3, 2);
 	lights.push_back(&l3);
+	Light l4 = Light(glm::vec3(-3, 6, -16), 1, 1);
+	lights.push_back(&l4);
 	float max = 0;
 	for (size_t i = 0; i < lights.size(); i++)
 		max += lights[i]->intensity;
@@ -408,8 +419,7 @@ int main() {
 	glm::vec3* frame = new glm::vec3[width * height];
 	glm::vec3* pixel = frame;
 
-	int ray_reflect_max = 2;
-	int shadow_blur_max = 16;
+
 
 #define one_second 1000
 	clock_t time_passed = 0;
@@ -418,23 +428,30 @@ int main() {
 
 	for (int y = 0; y < height; y++)
 		for (int x = 0; x < width; x++, pixel++) {
-			float xx = (2 * (x + 0.5) * invW - 1) * tan(fov / 2.) * aspect_ratio;
-			float yy = -(2 * (y + 0.5) * invH - 1) * tan(fov / 2.);
-			glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
+			glm::vec3 pixel_tmp(0);
 			*pixel = glm::vec3(0);
-			trace_ray(glm::vec3(0), direction, *pixel, ray_reflect_max);
-			time_passed = clock();
-			if (time_passed >= time_next_sec) {
-				time_next_sec += 1 * one_second;
-				std::cout << "frame " << (y * width + x) / (float)(height * width) * 100 << "%" << std::endl;
-			}
+			for (int anti_alias = 0; anti_alias < anti_alias_max; anti_alias++) {
+				float rand_xx = (float)0.5 * (rand() / (float)RAND_MAX-0.5);
+				float rand_yy = (float)0.5 * (rand() / (float)RAND_MAX-0.5);
+				float xx = (2 * (x + 0.5 + rand_xx) * invW - 1) * tan(fov / 2.) * aspect_ratio;
+				float yy = -(2 * (y + 0.5 + rand_yy) * invH - 1) * tan(fov / 2.);
+				glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
 
+				trace_ray(glm::vec3(0), direction, pixel_tmp, ray_reflect_max);
+				*pixel += (1/(float)anti_alias_max) * pixel_tmp;
+
+				time_passed = clock();
+				if (time_passed >= time_next_sec) {
+					time_next_sec += 1 * one_second;
+					std::cout << "frame " << (y * width + x) / (float)(height * width) * 100 << "%" << std::endl;
+				}
+			}
 		}
 	std::cout << "frame is rendered in " << time_passed / one_second
 		<< " seconds" << std::endl;
 
 	//вывод кадра
-	std::ofstream ofs("./untitled.ppm", std::ios::out | std::ios::binary);
+	std::ofstream ofs("./result.ppm", std::ios::out | std::ios::binary);
 	ofs << "P6\n" << width << " " << height << "\n255\n";
 	for (unsigned i = 0; i < height * width; ++i) {
 		ofs << (unsigned char)(255 * std::max(0.f, std::min(1.f, frame[i].x)));
