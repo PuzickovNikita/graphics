@@ -4,13 +4,45 @@
 #include <vector>
 #include <glm/vec3.hpp>
 #include <glm/geometric.hpp>
+#include <time.h>
 
 #define M_PI 3.141592653589793 
 
 struct Light {
 	glm::vec3 position;
 	float intensity;
-	Light(const glm::vec3& set_position, const float& set_intensity) : position(set_position), intensity(set_intensity) {}
+	float r;
+	Light(const glm::vec3& set_position, const float &set_r, const float& set_intensity) : 
+		position(set_position), r(set_r), intensity(set_intensity) {}
+
+	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction,
+		float& t) const {
+
+		float t_RES; // значение t точки пересечения со сферой
+
+		bool inside = false;
+		float r2 = r * r;
+		glm::vec3 v_OC = position - v_origin;
+		float v_OC_mod = dot(v_OC, v_OC);
+		if (v_OC_mod < r2)
+			inside = true;
+		float t_CTC = dot(v_OC, v_direction); //значение t точки ближней к центру сферы (Closest To Center)
+		if (inside && (t_CTC < 0))
+			return false;
+		float d2 = v_OC_mod - t_CTC * t_CTC;
+		if (d2 > r2)
+			return false;
+		if (inside)
+			t_RES = t_CTC + sqrtf(r2 - d2);
+		else
+			t_RES = t_CTC - sqrtf(r2 - d2);
+		if (t_RES <= 0)
+			return false;
+		//TODO:ПРОЧЕКАТЬ АЛГОРИТМ ЧТОБЫ ПОНЯТЬ КОСТЫЛЬ ВЕРХНИЕ ДВЕ СТРОЧКИ ИЛИ НЕТ 
+		t = t_RES;
+		return true;
+	}
+
 };
 
 struct Material {
@@ -56,8 +88,6 @@ public:
 
 std::vector< Light* > lights;
 std::vector <Object*> scene;
-
-
 
 class Sphere : public Object {
 public:
@@ -136,32 +166,58 @@ public:
 	}
 };
 
+/*
+Что делает trace_ray
+1)находит ближайший объект, который пересекает луч
+	1.2)првоеряем, что ближайший объект это не источник света
+2)считает отраженную компоненту цвета
+3)считает отсвещение
+	3.1) проверяем какие источники света видны из точки
+	3.2) расчитываем для этих источников дифузную и отраженную компоненты освещения
+*/
 
 void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 	glm::vec3& color_res, const int &ray_reflect_lef) {
-	int nearest = -1;
-	float t_solv = FLT_MAX;
+
 	color_res.x = 0; color_res.y = 0; color_res.z = 0;
 
+//1)
+	int nearest = -1;
+	float t_solv = FLT_MAX;
 	for (size_t i = 0; i < scene.size(); i++) {
-		float t_tmp; glm::vec3 N_tmp;
+		float t_tmp;
 		if ((*scene[i]).intersect(v_orig, v_dir, t_tmp))
 			if (t_tmp < t_solv) {
 				t_solv = t_tmp;
 				nearest = i;
 			}
 	}
+//1.2)
+	//надо ли учитывать light_intensity?
+	int nearest_light = -1;
+	float t_solv_light = FLT_MAX;
+	for (size_t i = 0; i < lights.size(); i++) {
+		float t_tmp; 
+		if (lights[i]->intersect(v_orig, v_dir, t_tmp))
+			if (t_tmp < t_solv_light) {
+				t_solv_light = t_tmp;
+				nearest_light = i;
+			}
+	}
+	if (t_solv_light < t_solv) {
+		color_res = glm::vec3(1);
+		return;
+	}
 
 	if (nearest < 0)
 		return;
-
 	glm::vec3 hit = v_orig + v_dir * t_solv;
 	glm::vec3 N; scene[nearest]->set_N(N, hit);
 	float difusal_factor = scene[nearest]->material.difusal_factor;
 	float specular_factor = scene[nearest]->material.specular_factor;
 	float specular_exponent = scene[nearest]->material.specular_exponent;
 
-
+//2)
 	glm::vec3 reflect_color(0);
 	if (ray_reflect_lef > 0) {
 		glm::vec3 reflect_dir = v_dir - 2.f * glm::dot(v_dir, N) * N;
@@ -170,7 +226,8 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 								: hit + N * (float)(1e-3);
 		trace_ray(reflect_orig, reflect_dir, reflect_color, ray_reflect_lef - 1);
 	}
-	//ОСВЕЩЕНИЕ
+
+//3)
 
 	float DLI = 0; // Diffuse Light Intensity
 	float SLI = 0; //Specular Light Intensity
@@ -178,9 +235,7 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 		glm::vec3 light_dir = (lights[i]->position - hit);
 		float light_distance = glm::length(light_dir);
 		light_dir = glm::normalize(light_dir);
-
-
-		//Тень
+//3.1)
 		bool light_saw = true;
 		glm::vec3 shadow_orig = glm::dot(light_dir, N) < 0
 			? hit - N * (float)(1e-3)
@@ -196,6 +251,7 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 
 		//если не в тени добавляем освещение
 		if (light_saw) {//Блинн-Фонг
+			//TODO:нужен ли Блинн-Фонг если освещение объемное
 			if (scene[nearest]->obj_type == 1) {
 				if(difusal_factor != 0)
 					DLI +=	(*lights[i]).intensity *
@@ -230,8 +286,8 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 
 int main() {
 
-	//const int width = 960, height = 540;
-	const int width = 1920, height = 1080;
+	const int width = 960, height = 540;
+	//const int width = 1600, height = 900;
 	const int fov_degree = 60;
 	
 
@@ -289,11 +345,11 @@ int main() {
 
 	//СВЕТ
 
-	Light l1 = Light(glm::vec3(-20, 20, 20), 0.25);
+	Light l1 = Light(glm::vec3(-20, 20, 20), 3, 0.25);
 	lights.push_back(&l1);
-	Light l2 = Light(glm::vec3( 30, 50, -25), 0.5);
+	Light l2 = Light(glm::vec3( 30, 50, -25), 3, 0.5);
 	lights.push_back(&l2);
-	Light l3 = Light(glm::vec3(30, 20, 30), 0.25);
+	Light l3 = Light(glm::vec3(30, 20, 30), 3, 0.25);
 	lights.push_back(&l3);
 	float max = 0;
 	for (size_t i = 0; i < lights.size(); i++)
@@ -311,6 +367,11 @@ int main() {
 
 	int ray_reflect_max = 2;
 
+#define one_second 1000
+	clock_t time_passed = 0; 
+	clock_t time_next_sec = 0;
+	std::cout.precision(3);
+
 	for (int y = 0; y < height; y++)
 		for (int x = 0; x < width; x++, pixel++) {
 			float xx = (2 * (x + 0.5) * invW - 1) * tan(fov / 2.) * aspect_ratio;
@@ -318,7 +379,16 @@ int main() {
 			glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
 			*pixel = glm::vec3(0);
 			trace_ray(glm::vec3(0), direction, *pixel, ray_reflect_max);
+			//std::cout << pixel->x << ' ' << pixel->y << ' ' << pixel->z << std::endl;
+			time_passed = clock();
+			if (time_passed >= time_next_sec) {
+				time_next_sec += 1*one_second;
+				std::cout << "frame " << (y * width + x)/(float)(height * width)*100 << "%" << std::endl;
+			}
+
 		}
+	std::cout << "frame is rendered in " << time_passed/one_second
+		<< " seconds" << std::endl;
 
 	//вывод кадра
 	std::ofstream ofs("./untitled.ppm", std::ios::out | std::ios::binary);
