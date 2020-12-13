@@ -8,11 +8,15 @@
 
 #define M_PI 3.141592653589793 
 
+//settings
+int shadow_blur_max = 8;
+//______
+
 struct Light {
 	glm::vec3 position;
 	float intensity;
 	float r;
-	Light(const glm::vec3& set_position, const float &set_r, const float& set_intensity) : 
+	Light(const glm::vec3& set_position, const float& set_r, const float& set_intensity) :
 		position(set_position), r(set_r), intensity(set_intensity) {}
 
 	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction,
@@ -53,10 +57,10 @@ struct Material {
 	float reflection_factor;
 
 
-	Material(const glm::vec3& set_color, const float &set_difusal_factor, const float &set_specular_factor,
-	const float &set_specular_exponent, const float &set_reflection_factor) : 
-			color(set_color), difusal_factor(set_difusal_factor), specular_factor(set_specular_factor),
-			specular_exponent(set_specular_exponent), reflection_factor(set_reflection_factor){
+	Material(const glm::vec3& set_color, const float& set_difusal_factor, const float& set_specular_factor,
+		const float& set_specular_exponent, const float& set_reflection_factor) :
+		color(set_color), difusal_factor(set_difusal_factor), specular_factor(set_specular_factor),
+		specular_exponent(set_specular_exponent), reflection_factor(set_reflection_factor) {
 	}
 };
 
@@ -79,8 +83,8 @@ public:
 
 	virtual void set_N(glm::vec3& N_res, glm::vec3& hit) const {}
 
-	Object(const glm::vec3& set_color,const float &set_difusal_factor, const float &set_specular_factor,
-		const float& set_specular_exponent, const float &set_reflection_factor, const int &object_type)
+	Object(const glm::vec3& set_color, const float& set_difusal_factor, const float& set_specular_factor,
+		const float& set_specular_exponent, const float& set_reflection_factor, const int& object_type)
 		:material(set_color, set_difusal_factor, set_specular_factor, set_specular_exponent, set_reflection_factor),
 		obj_type(object_type) {
 	}
@@ -94,11 +98,11 @@ public:
 	glm::vec3 center;
 	float r;
 
-	Sphere(const glm::vec3& set_center, const float& radius, 
-		const glm::vec3& set_color, const float &set_difusal_factor, const float& set_specular_factor,
-		const float& set_specular_exponent, const float &set_reflection_factor)
-		:Object(set_color, set_difusal_factor, set_specular_factor, 
-			set_specular_exponent, set_reflection_factor,  1) {
+	Sphere(const glm::vec3& set_center, const float& radius,
+		const glm::vec3& set_color, const float& set_difusal_factor, const float& set_specular_factor,
+		const float& set_specular_exponent, const float& set_reflection_factor)
+		:Object(set_color, set_difusal_factor, set_specular_factor,
+			set_specular_exponent, set_reflection_factor, 1) {
 		r = radius;
 		center = set_center;
 	}
@@ -106,7 +110,7 @@ public:
 	bool intersect(const glm::vec3& v_origin, const glm::vec3& v_direction,
 		float& t) const override {
 
-		float t_RES; // значение t точки пересечения со сферой
+		float t_RES;  // значение t точки пересечения со сферой
 
 		bool inside = false;
 		float r2 = r * r;
@@ -141,8 +145,8 @@ public:
 	float r;
 	glm::vec3 N;
 
-	Plane(const glm::vec3& x1, const glm::vec3& x2, const glm::vec3& x3, 
-		const glm::vec3& set_color, const float &set_difusal_factor, const float &set_specular_factor, 
+	Plane(const glm::vec3& x1, const glm::vec3& x2, const glm::vec3& x3,
+		const glm::vec3& set_color, const float& set_difusal_factor, const float& set_specular_factor,
 		const float& set_specular_exponent, const float& set_reflection_factor)
 		: Object(set_color, set_difusal_factor, set_specular_factor, set_specular_exponent,
 			set_reflection_factor, 2) {
@@ -166,22 +170,46 @@ public:
 	}
 };
 
+void make_2_v(const glm::vec3& N, glm::vec3& v1, glm::vec3& v2) {
+	float x1, y1, z1, x2, y2, z2, x(N.x), y(N.y), z(N.z);
+	if ((x != 0) && (y != 0)) {
+		x1 = -y;
+		y1 = x;
+		z1 = 0;
+		x2 = -(x * z);
+		y2 = (-y * z);
+		z2 = x * x + y * y;
+		v1 = glm::normalize(glm::vec3(x1, y1, z1));
+		v2 = glm::normalize(glm::vec3(x2, y2, z2));
+	}
+	else {
+		v1 = glm::vec3(1, 0, 0);
+		v2 = glm::vec3(0, 1, 0);
+	}
+}
+
+float gauss() {
+	float x = rand() / (float)RAND_MAX;
+	x = x / (sqrt((float)2));
+	return 0.5 * (1 + erf(x));
+}
+
 /*
 Что делает trace_ray
 1)находит ближайший объект, который пересекает луч
 	1.2)првоеряем, что ближайший объект это не источник света
-2)считает отраженную компоненту цвета
+2)считает отражение
 3)считает отсвещение
 	3.1) проверяем какие источники света видны из точки
 	3.2) расчитываем для этих источников дифузную и отраженную компоненты освещения
 */
 
-void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
-	glm::vec3& color_res, const int &ray_reflect_lef) {
+void trace_ray(const glm::vec3& v_orig, const glm::vec3& v_dir,
+	glm::vec3& color_res, const int& ray_reflect_lef) {
 
 	color_res.x = 0; color_res.y = 0; color_res.z = 0;
 
-//1)
+	//1)
 	int nearest = -1;
 	float t_solv = FLT_MAX;
 	for (size_t i = 0; i < scene.size(); i++) {
@@ -192,12 +220,11 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 				nearest = i;
 			}
 	}
-//1.2)
-	//надо ли учитывать light_intensity?
+	//1.2)
 	int nearest_light = -1;
 	float t_solv_light = FLT_MAX;
 	for (size_t i = 0; i < lights.size(); i++) {
-		float t_tmp; 
+		float t_tmp;
 		if (lights[i]->intersect(v_orig, v_dir, t_tmp))
 			if (t_tmp < t_solv_light) {
 				t_solv_light = t_tmp;
@@ -217,67 +244,83 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 	float specular_factor = scene[nearest]->material.specular_factor;
 	float specular_exponent = scene[nearest]->material.specular_exponent;
 
-//2)
+	//2)
 	glm::vec3 reflect_color(0);
 	if (ray_reflect_lef > 0) {
 		glm::vec3 reflect_dir = v_dir - 2.f * glm::dot(v_dir, N) * N;
 		glm::vec3 reflect_orig = glm::dot(reflect_dir, N) < 0
-								? hit - N * (float)(1e-3)
-								: hit + N * (float)(1e-3);
+			? hit - N * (float)(1e-3)
+			: hit + N * (float)(1e-3);
 		trace_ray(reflect_orig, reflect_dir, reflect_color, ray_reflect_lef - 1);
 	}
 
-//3)
+	//3)
 
 	float DLI = 0; // Diffuse Light Intensity
 	float SLI = 0; //Specular Light Intensity
 	for (size_t i = 0; i < lights.size(); i++) {
-		glm::vec3 light_dir = (lights[i]->position - hit);
-		float light_distance = glm::length(light_dir);
-		light_dir = glm::normalize(light_dir);
-//3.1)
-		bool light_saw = true;
-		glm::vec3 shadow_orig = glm::dot(light_dir, N) < 0
-			? hit - N * (float)(1e-3)
-			: hit + N * (float)(1e-3);
-		for (size_t j = 0; j < scene.size(); j++) {
-			float t;
-			if (scene[j]->intersect(shadow_orig, light_dir, t))
-				if (t <= light_distance){
-					light_saw = false;
-					break;
-				}
-		}
+		//glm::vec3 light_dir = (lights[i]->position - hit);
 
-		//если не в тени добавляем освещение
-		if (light_saw) {//Блинн-Фонг
-			//TODO:нужен ли Блинн-Фонг если освещение объемное
-			if (scene[nearest]->obj_type == 1) {
-				if(difusal_factor != 0)
-					DLI +=	(*lights[i]).intensity *
-							std::max(0.f, glm::dot(light_dir, N));
-				if( (specular_factor != 0) && (specular_exponent != 0) )
-				{
-					glm::vec3 H = (glm::normalize(-v_dir + light_dir));//Не очень понял почему знаки так, но работает же)
-					SLI +=	(lights[i]->intensity) *
-							pow(std::max(0.f, glm::dot(H, N)), specular_exponent);
-				}
+		float light_r = lights[i]->r;
+		glm::vec3 v1, v2;
+		make_2_v(v_dir, v1, v2);
+
+		for (int shadow_i = 0; shadow_i < shadow_blur_max; shadow_i++) {
+
+			float rand_1 = gauss();
+			float rand_2 = gauss();
+
+			glm::vec3 light_dir_blur = (lights[i]->position + light_r * rand_1 * v1 + light_r * rand_2 * v2 - hit);
+			float light_distance_blur = glm::length(light_dir_blur);
+			light_dir_blur = glm::normalize(light_dir_blur);
+			//3.1)
+			bool light_saw = true;
+			glm::vec3 shadow_orig = glm::dot(light_dir_blur, N) < 0
+				? hit - N * (float)(1e-3)
+				: hit + N * (float)(1e-3);
+			for (size_t j = 0; j < scene.size(); j++) {
+				float t;
+				if (scene[j]->intersect(shadow_orig, light_dir_blur, t))
+					if (t <= light_distance_blur) {
+						light_saw = false;
+						break;
+					}
 			}
-			else { //в плоскости возможно надо повернуть нормаль
-				if (difusal_factor != 0)
-					DLI +=	(*lights[i]).intensity *
-							std::max(0.f, glm::abs(glm::dot(light_dir, N)));
-				if ((specular_factor != 0) && (specular_exponent != 0))
-				{
-					glm::vec3 H = (glm::normalize(-v_dir + light_dir));//Не очень понял почему знаки так, но работает же)
-					SLI +=	(lights[i]->intensity) *
+			//если не в тени добавляем освещение
+			if (light_saw) {//Диффузная компонента
+				if (scene[nearest]->obj_type == 1) {
+					if (difusal_factor != 0)
+						DLI += (*lights[i]).intensity *
+						std::max(0.f, glm::dot(light_dir_blur, N));
+				}
+				else { //в плоскости возможно надо повернуть нормаль
+					if (difusal_factor != 0)
+						DLI += (*lights[i]).intensity *
+						std::max(0.f, glm::abs(glm::dot(light_dir_blur, N)));
+				}
+
+				//блики по Блинн_фонгу
+				if (scene[nearest]->obj_type == 1) {
+					if ((specular_factor != 0) && (specular_exponent != 0))
+					{
+						glm::vec3 H = (glm::normalize(-v_dir + light_dir_blur));//Не очень понял почему знаки так, но работает же)
+						SLI += (lights[i]->intensity) *
+							pow(std::max(0.f, glm::dot(H, N)), specular_exponent);
+					}
+				}
+				else { //в плоскости возможно надо повернуть нормаль
+					if ((specular_factor != 0) && (specular_exponent != 0))
+					{
+						glm::vec3 H = (glm::normalize(-v_dir + light_dir_blur));//Не очень понял почему знаки так, но работает же)
+						SLI += (lights[i]->intensity) *
 							pow(std::max(0.f, glm::abs(glm::dot(H, N))), specular_exponent);
+					}
 				}
 			}
 		}
 	}
-	color_res = scene[nearest]->material.color * DLI * difusal_factor +
-		glm::vec3(1) * SLI * specular_factor
+	color_res = (scene[nearest]->material.color * DLI * difusal_factor +
+		glm::vec3(1) * SLI * specular_factor)*(1/(float)shadow_blur_max)
 		+ reflect_color * scene[nearest]->material.reflection_factor;
 
 	//color_res = glm::vec3(1) * SLI * specular_factor;
@@ -286,10 +329,10 @@ void trace_ray(const glm::vec3& v_orig,const glm::vec3& v_dir,
 
 int main() {
 
-	const int width = 960, height = 540;
+	const int width = 640, height = 360;
+	//const int width = 960, height = 540;
 	//const int width = 1600, height = 900;
 	const int fov_degree = 60;
-	
 
 	//задаем сцену
 		//ОБЪЕКТЫ
@@ -299,11 +342,11 @@ int main() {
 	// зеркальный множитель - яркость бликов
 	// зеркальная экспонента - обратный радиус блика
 
-	Sphere s3(glm::vec3(-3, 0, -16), 2 , material1, 0);
+	Sphere s3(glm::vec3(-3, 0, -16), 2, material1, 0);
 	scene.push_back(&s3);
-	Sphere s4(glm::vec3(-1, -1.5, -12), 2,  material2, 0.7);
+	Sphere s4(glm::vec3(-1, -1.5, -12), 2, material2, 0.7);
 	scene.push_back(&s4);
-	Sphere s5(glm::vec3(1.5, -0.5, -18),3, material2, 0);
+	Sphere s5(glm::vec3(1.5, -0.5, -18), 3, material2, 0);
 	scene.push_back(&s5);
 	Sphere s6(glm::vec3(7, 5, -18), 4, material1, 0.8);
 	scene.push_back(&s6);
@@ -347,7 +390,7 @@ int main() {
 
 	Light l1 = Light(glm::vec3(-20, 20, 20), 3, 0.25);
 	lights.push_back(&l1);
-	Light l2 = Light(glm::vec3( 30, 50, -25), 3, 0.5);
+	Light l2 = Light(glm::vec3(30, 50, -25), 3, 0.5);
 	lights.push_back(&l2);
 	Light l3 = Light(glm::vec3(30, 20, 30), 3, 0.25);
 	lights.push_back(&l3);
@@ -366,9 +409,10 @@ int main() {
 	glm::vec3* pixel = frame;
 
 	int ray_reflect_max = 2;
+	int shadow_blur_max = 16;
 
 #define one_second 1000
-	clock_t time_passed = 0; 
+	clock_t time_passed = 0;
 	clock_t time_next_sec = 0;
 	std::cout.precision(3);
 
@@ -379,15 +423,14 @@ int main() {
 			glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
 			*pixel = glm::vec3(0);
 			trace_ray(glm::vec3(0), direction, *pixel, ray_reflect_max);
-			//std::cout << pixel->x << ' ' << pixel->y << ' ' << pixel->z << std::endl;
 			time_passed = clock();
 			if (time_passed >= time_next_sec) {
-				time_next_sec += 1*one_second;
-				std::cout << "frame " << (y * width + x)/(float)(height * width)*100 << "%" << std::endl;
+				time_next_sec += 1 * one_second;
+				std::cout << "frame " << (y * width + x) / (float)(height * width) * 100 << "%" << std::endl;
 			}
 
 		}
-	std::cout << "frame is rendered in " << time_passed/one_second
+	std::cout << "frame is rendered in " << time_passed / one_second
 		<< " seconds" << std::endl;
 
 	//вывод кадра
