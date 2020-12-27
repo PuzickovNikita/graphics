@@ -374,9 +374,9 @@ int main() {
 	//const int width = 1920, height = 1080;
 
 	ray_reflect_max = 2;
-	reflect_blur_max = 16;
-	shadow_blur_max = 1;
-	anti_alias_max = 1;
+	reflect_blur_max = 4;
+	shadow_blur_max = 8;
+	anti_alias_max = 4;
 
 
 	const int fov_degree = 60;
