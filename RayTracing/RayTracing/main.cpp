@@ -4,12 +4,16 @@
 #include <vector>
 #include <glm/vec3.hpp>
 #include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
+#include <glm/gtx/rotate_vector.hpp>
 #include <time.h>
+#include <random>
 
 #define M_PI 3.141592653589793 
 
 //settings
 int shadow_blur_max;
+int reflect_blur_max;
 int ray_reflect_max;
 int anti_alias_max;
 //______
@@ -190,10 +194,18 @@ void make_2_v(const glm::vec3& N, glm::vec3& v1, glm::vec3& v2) {
 	}
 }
 
+
+std::normal_distribution<float> dist_g(0, 0.3);
+std::default_random_engine generator;
+
 float gauss() {
-	float x = rand() / (float)RAND_MAX;
-	x = x / (sqrt((float)2));
-	return 0.5 * (1 + erf(x));
+	//float x = rand() / (float)RAND_MAX;
+	//x = x / (sqrt((float)2));
+	//return 0.5 * (1 + erff(x)) - 0.5;
+	float res = dist_g(generator);
+	if (res > 1) return 1;
+	if (res < -1) return -1;
+	return res;
 }
 
 /*
@@ -248,12 +260,32 @@ void trace_ray(const glm::vec3& v_orig, const glm::vec3& v_dir,
 
 	//2)
 	glm::vec3 reflect_color(0);
-	if (ray_reflect_lef > 0) {
-		glm::vec3 reflect_dir = v_dir - 2.f * glm::dot(v_dir, N) * N;
-		glm::vec3 reflect_orig = glm::dot(reflect_dir, N) < 0
-			? hit - N * (float)(1e-3)
-			: hit + N * (float)(1e-3);
-		trace_ray(reflect_orig, reflect_dir, reflect_color, ray_reflect_lef - 1);
+
+	glm::vec3 reflect_dir = glm::normalize(v_dir - 2.f * glm::dot(v_dir, N) * N);
+	glm::vec3 reflect_orig = glm::dot(reflect_dir, N) < 0
+		? hit - N * (float)(1e-3)
+		: hit + N * (float)(1e-3);
+
+	for (int i_refect = 0; i_refect < reflect_blur_max; i_refect++ ) {
+		if (ray_reflect_lef > 0) {
+			float x_delta = 0, y_delta = 0, z_delta = 0;
+			if (i_refect > 0) {
+				int delta = 4;
+				x_delta = glm::radians(gauss() * delta);
+				y_delta = glm::radians(gauss() * delta);
+				z_delta = glm::radians(gauss() * delta);
+			}
+
+			glm::vec3 reflect_color_tmp(0);
+			glm::vec3 reflect_dir_tmp = reflect_dir;
+
+			reflect_dir_tmp = glm::rotateX(reflect_dir_tmp, x_delta);
+			reflect_dir_tmp = glm::rotateY(reflect_dir_tmp, y_delta);
+			reflect_dir_tmp = glm::rotateZ(reflect_dir_tmp, z_delta);
+
+			trace_ray(reflect_orig, reflect_dir_tmp, reflect_color_tmp, ray_reflect_lef - 1);
+			reflect_color = reflect_color + reflect_color_tmp *glm::dot(reflect_dir, reflect_dir_tmp);
+		}
 	}
 
 	//3)
@@ -261,18 +293,21 @@ void trace_ray(const glm::vec3& v_orig, const glm::vec3& v_dir,
 	float DLI = 0; // Diffuse Light Intensity
 	float SLI = 0; //Specular Light Intensity
 	for (size_t i = 0; i < lights.size(); i++) {
-		//glm::vec3 light_dir = (lights[i]->position - hit);
+		glm::vec3 light_dir = glm::normalize(lights[i]->position - hit);
 
 		float light_r = lights[i]->r;
 		glm::vec3 v1, v2;
-		make_2_v(v_dir, v1, v2);
+		make_2_v(light_dir, v1, v2);
 
 		for (int shadow_i = 0; shadow_i < shadow_blur_max; shadow_i++) {
+			
+			float rand_1 = 0, rand_2 = 0;
+			if (shadow_i > 0) {
+				rand_1 = gauss();
+				rand_2 = gauss();
+			}
 
-			float rand_1 = gauss();
-			float rand_2 = gauss();
-
-			glm::vec3 light_dir_blur = (lights[i]->position + light_r * rand_1 * v1 + light_r * rand_2 * v2 - hit);
+			glm::vec3 light_dir_blur = (lights[i]->position + (light_r * rand_1) * v1 + (light_r * rand_2) * v2 - hit);
 			float light_distance_blur = glm::length(light_dir_blur);
 			light_dir_blur = glm::normalize(light_dir_blur);
 			//3.1)
@@ -323,7 +358,7 @@ void trace_ray(const glm::vec3& v_orig, const glm::vec3& v_dir,
 	}
 	color_res = (scene[nearest]->material.color * DLI * difusal_factor +
 		glm::vec3(1) * SLI * specular_factor)*(1/(float)shadow_blur_max)
-		+ reflect_color * scene[nearest]->material.reflection_factor;
+		+ reflect_color * (scene[nearest]->material.reflection_factor * (1/(float)reflect_blur_max));
 
 	//color_res = glm::vec3(1) * SLI * specular_factor;
 }
@@ -331,14 +366,17 @@ void trace_ray(const glm::vec3& v_orig, const glm::vec3& v_dir,
 
 int main() {
 
+
+
 	const int width = 640, height = 360;
 	//const int width = 960, height = 540;
 	//const int width = 1600, height = 900;
 	//const int width = 1920, height = 1080;
 
-	ray_reflect_max = 1;
+	ray_reflect_max = 2;
+	reflect_blur_max = 16;
 	shadow_blur_max = 1;
-	anti_alias_max = 4;
+	anti_alias_max = 1;
 
 
 	const int fov_degree = 60;
@@ -426,13 +464,31 @@ int main() {
 	clock_t time_next_sec = 0;
 	std::cout.precision(3);
 
+	int scale[21];
+	for (int j = 0; j < 21; j++)
+		scale[j] = 0;
+	for (int i = 0; i < 10000; i++) {
+
+		scale[  (int)(gauss()*10) + 10] ++;
+	}
+	for (int i = 0; i < 21; i++) {
+		std::cout << i-10 << ' ' <<  scale[i];
+		std::cout << std::endl;
+	}
+
 	for (int y = 0; y < height; y++)
 		for (int x = 0; x < width; x++, pixel++) {
 			glm::vec3 pixel_tmp(0);
 			*pixel = glm::vec3(0);
 			for (int anti_alias = 0; anti_alias < anti_alias_max; anti_alias++) {
-				float rand_xx = (float)0.5 * (rand() / (float)RAND_MAX-0.5);
-				float rand_yy = (float)0.5 * (rand() / (float)RAND_MAX-0.5);
+				float rand_xx = 0, rand_yy = 0;
+				if (anti_alias != 1) {
+					rand_xx = (float)0.5 * (rand() / (float)RAND_MAX - 0.5);
+					rand_yy = (float)0.5 * (rand() / (float)RAND_MAX - 0.5);
+				}
+
+				//float xx = (2 * (x + 0.5) * invW - 1) * tan(fov / 2.) * aspect_ratio;
+				//float yy = -(2 * (y + 0.5) * invH - 1) * tan(fov / 2.);
 				float xx = (2 * (x + 0.5 + rand_xx) * invW - 1) * tan(fov / 2.) * aspect_ratio;
 				float yy = -(2 * (y + 0.5 + rand_yy) * invH - 1) * tan(fov / 2.);
 				glm::vec3 direction = glm::normalize(glm::vec3(xx, yy, -1));
